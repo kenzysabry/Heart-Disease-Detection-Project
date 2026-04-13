@@ -1,69 +1,106 @@
 import pandas as pd
 from experta import *
-df = pd.read_csv('heart.csv')
-df
-df = df.dropna()
-class Patient(Fact): 
+from sklearn.metrics import confusion_matrix, classification_report, accuracy_score
+
+class Patient(Fact):
     pass
+
 class HeartDiseaseExpert(KnowledgeEngine):
 
-    @Rule(Patient(age=P(lambda x: x > 50),
-                  cholesterol=P(lambda x: x > 240)))
+    @Rule(Patient(age=P(lambda x: x > 50), cholesterol=P(lambda x: x > 240)))
     def high_risk_age_chol(self):
-        print("High Risk: Age > 50 and Cholesterol > 240")
+        self.declare(Prediction(value=1))
 
-    @Rule(Patient(bp=P(lambda x: x > 140),
-                  smoking='yes'))
+    @Rule(Patient(bp=P(lambda x: x > 140), smoking='yes'))
     def high_risk_bp_smoking(self):
-        print("High Risk: High BP and Smoking")
+        self.declare(Prediction(value=1))
 
-    @Rule(Patient(diabetes='yes',
-                  bmi=P(lambda x: x > 30)))
+    @Rule(Patient(diabetes='yes', bmi=P(lambda x: x > 30)))
     def high_risk_diabetes_bmi(self):
-        print("High Risk: Diabetes and Obesity")
+        self.declare(Prediction(value=1))
 
-    @Rule(Patient(chest_pain='typical',
-                  max_hr=P(lambda x: x < 100)))
+    @Rule(Patient(chest_pain='typical', max_hr=P(lambda x: x < 100)))
     def high_risk_chestpain_hr(self):
-        print("High Risk: Typical chest pain + Low heart rate")
+        self.declare(Prediction(value=1))
 
     @Rule(Patient(oldpeak=P(lambda x: x > 2)))
     def high_risk_oldpeak(self):
-        print("High Risk: ST depression (oldpeak > 2)")
+        self.declare(Prediction(value=1))
 
-
-
-    @Rule(Patient(age=P(lambda x: 40 <= x <= 50),
-                  cholesterol=P(lambda x: 200 <= x <= 240)))
-    def medium_risk_age_chol(self):
-        print("Medium Risk: Moderate age and cholesterol")
+    # Medium Risk
+    @Rule(Patient(age=P(lambda x: 40 <= x <= 50), cholesterol=P(lambda x: 200 <= x <= 240)))
+    def medium_risk(self):
+        self.declare(Prediction(value=1))
 
     @Rule(Patient(bp=P(lambda x: 120 <= x <= 140)))
     def medium_risk_bp(self):
-        print("Medium Risk: Elevated BP")
+        self.declare(Prediction(value=1))
 
     @Rule(Patient(bmi=P(lambda x: 25 <= x <= 30)))
     def medium_risk_bmi(self):
-        print("Medium Risk: Overweight")
+        self.declare(Prediction(value=1))
+
+    # Low Risk
+    @Rule(Patient(exercise='regular', bmi=P(lambda x: x < 25)))
+    def low_risk(self):
+        self.declare(Prediction(value=0))
+
+    @Rule(Patient(smoking='no', cholesterol=P(lambda x: x < 200)))
+    def low_risk_smoking(self):
+        self.declare(Prediction(value=0))
+
+    @Rule(Patient(age=P(lambda x: x < 40), bp=P(lambda x: x < 120)))
+    def low_risk_young(self):
+        self.declare(Prediction(value=0))
 
 
-    @Rule(Patient(exercise='regular',
-                  bmi=P(lambda x: x < 25)))
-    def low_risk_exercise(self):
-        print("Low Risk: Active lifestyle and healthy BMI")
+class Prediction(Fact):
+    pass
 
-    @Rule(Patient(smoking='no',
-                  cholesterol=P(lambda x: x < 200)))
-    def low_risk_smoking_chol(self):
-        print("Low Risk: No smoking and good cholesterol")
 
-    @Rule(Patient(age=P(lambda x: x < 40),
-                  bp=P(lambda x: x < 120)))
-    def low_risk_young_bp(self):
-        print("Low Risk: Young with normal BP")
+df = pd.read_csv('heart.csv')
+df = df.dropna().reset_index(drop=True)
+df = df.drop_duplicates().reset_index(drop=True)
 
 engine = HeartDiseaseExpert()
-engine.reset
+y_pred = []
+
+
+for i, row in df.iterrows():
+    engine.reset()
+    
+    patient = Patient(
+        age=int(row['age']),
+        cholesterol=int(row['chol']),
+        bp=int(row['trestbps']),
+        smoking='yes' if row.get('smoking', 0) else 'no',
+        bmi=float(row.get('bmi', 25)),
+        exercise='regular' if row.get('exercise', 0) else 'no',
+        diabetes='yes' if row.get('fbs', 0) else 'no',
+        chest_pain='typical' if row['cp'] == 0 else 'atypical',
+        max_hr=int(row['thalach']),
+        oldpeak=float(row['oldpeak'])
+    )
+    
+    engine.declare(patient)
+    engine.run()
+    
+    pred = 0
+    for fact in engine.facts.values():
+        if isinstance(fact, Prediction):
+            pred = fact['value']
+            break
+    
+    y_pred.append(pred)
+
+y_true = df['target'].values
+
+print("\n=== تقييم Expert System ===")
+print(f"Accuracy: {accuracy_score(y_true, y_pred):.4f}")
+print("\nClassification Report:")
+print(classification_report(y_true, y_pred))
+print("\nConfusion Matrix:")
+print(confusion_matrix(y_true, y_pred))
 def get_data():
     return Patient(
         age=int(input("Age: ")),
